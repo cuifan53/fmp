@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/panjf2000/ants/v2"
 )
 
 type IEventHandler interface {
@@ -14,25 +16,34 @@ type IEventHandler interface {
 	// MN发生变化时调用
 	OnMn(conn *Conn)
 	// 接收报文时调用
-	React(conn *Conn, msg *Msg)
+	React(msg *Msg)
 }
 
 type Server struct {
-	port    int
-	connMap map[string]*Conn
-	handler IEventHandler
-	mu      sync.RWMutex
+	port     int
+	connMap  map[string]*Conn
+	handler  IEventHandler
+	mu       sync.RWMutex
+	antsPool *ants.PoolWithFunc
 }
 
-func NewServer(port int, handler IEventHandler) *Server {
+func NewServer(port, poolSize int, handler IEventHandler) *Server {
+	antsPool, err := ants.NewPoolWithFunc(poolSize, func(i interface{}) {
+		handler.React(i.(*Msg))
+	})
+	if err != nil {
+		panic(err)
+	}
 	return &Server{
-		port:    port,
-		connMap: make(map[string]*Conn),
-		handler: handler,
+		port:     port,
+		connMap:  make(map[string]*Conn),
+		handler:  handler,
+		antsPool: antsPool,
 	}
 }
 
 func (s *Server) Serve() {
+	defer s.antsPool.Release()
 	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", s.port))
 	if err != nil {
 		panic(err)

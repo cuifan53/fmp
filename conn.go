@@ -72,7 +72,6 @@ func (c *Conn) reader() {
 			if msg == nil {
 				continue
 			}
-			// TODO ants
 			// 触发mn变化回调
 			if c.mn == "" {
 				c.mn = msg.dataMap["mn"]
@@ -80,7 +79,10 @@ func (c *Conn) reader() {
 				go c.server.handler.OnMn(c)
 			}
 			// 触发接收报文回调
-			go c.server.handler.React(c, msg)
+			if err := c.server.antsPool.Invoke(msg); err != nil {
+				l.Error(err.Error())
+				continue
+			}
 		}
 	}
 }
@@ -114,16 +116,17 @@ func (c *Conn) receiveMsg() (*Msg, error) {
 	if _, err := io.ReadFull(c.tcpConn, data); err != nil {
 		return nil, err
 	}
-	m := &Msg{
+	msg := &Msg{
+		conn: c,
 		// Data 不包含Eof结尾
 		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
 	}
-	dataMap, err := U.parse(string(m.data))
+	dataMap, err := U.parse(string(msg.data))
 	if err != nil {
 		return nil, err
 	}
-	m.dataMap = dataMap
-	return m, nil
+	msg.dataMap = dataMap
+	return msg, nil
 }
 
 func (c *Conn) SendMsg(data string) error {

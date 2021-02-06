@@ -12,6 +12,7 @@ const (
 )
 
 type Msg struct {
+	conn    *Conn
 	data    []byte
 	dataMap map[string]string
 	mu      sync.RWMutex

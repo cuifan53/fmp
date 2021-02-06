@@ -45,7 +45,7 @@ func (*util) crc(s string) string {
 func (u *util) parse(originMsg string) (map[string]string, error) {
 	ret := make(map[string]string)
 	// 原始报文
-	ret["origin"] = originMsg
+	ret["OriginMsg"] = originMsg
 	dataAndCrc := originMsg[MsgHeaderLen+MsgDataLenLen:]
 	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLen]
 	crc := dataAndCrc[len(data):]
@@ -54,7 +54,6 @@ func (u *util) parse(originMsg string) (map[string]string, error) {
 	if crc != realCrc {
 		return nil, errors.New("crc校验失败")
 	}
-	ret["crc"] = crc
 	// 按CP数据段分割
 	tmp := strings.Split(data, "CP=&&")
 	// 编码区
@@ -62,7 +61,7 @@ func (u *util) parse(originMsg string) (map[string]string, error) {
 	u.parseCode(ret, code)
 	// CP区
 	cp := tmp[1][:len(tmp[1])-2] // 这里的2是字符串最后的2个&&
-	ret["cp"] = cp
+	ret["CP"] = cp
 	u.parseCp(ret, cp)
 	// 解析Flag
 	u.parseFlag(ret)
@@ -81,7 +80,7 @@ func (*util) parseCode(ret map[string]string, code string) {
 			continue
 		}
 		tmp1 := strings.Split(v, "=") // ["ST", 32]
-		ret[strings.ToLower(tmp1[0])] = tmp1[1]
+		ret[tmp1[0]] = tmp1[1]
 	}
 }
 
@@ -94,7 +93,7 @@ func (*util) parseCp(ret map[string]string, cp string) {
 		}
 		if !strings.Contains(v, ",") { // DataTime=20200114120000
 			tmp1 := strings.Split(v, "=") // ["DataTime", 20200114120000]
-			ret[strings.ToLower(tmp1[0])] = tmp1[1]
+			ret[tmp1[0]] = tmp1[1]
 		} else { // 011-Rtd=0,011-Flag=B
 			tmp2 := strings.Split(v, ",") // ["011-Rtd=0", "011-Flag=B"]
 			for _, v1 := range tmp2 {
@@ -102,7 +101,7 @@ func (*util) parseCp(ret map[string]string, cp string) {
 					continue
 				}
 				tmp3 := strings.Split(v1, "=") // ["011-Rtd", 0]
-				ret[strings.ToLower(tmp3[0])] = tmp3[1]
+				ret[tmp3[0]] = tmp3[1]
 			}
 		}
 	}
@@ -126,41 +125,41 @@ func (*util) parseCp(ret map[string]string, cp string) {
 // 10     00001010   2017扩展版 有数据包序号 无需应答
 // 11     00001011   2017扩展版 有数据包序号 需应答
 func (*util) parseFlag(ret map[string]string) {
-	if flag, ok := ret["flag"]; ok {
+	if flag, ok := ret["Flag"]; ok {
 		flagInt64, _ := strconv.ParseInt(flag, 10, 64)
 		bFlag := strconv.FormatInt(flagInt64, 2)
 		bFlag = ("00000000" + bFlag)[len(bFlag):]
 		if bFlag[4:5] == "1" || bFlag[5:6] == "1" {
-			ret["protocol"] = "2017"
+			ret["Protocol"] = "2017"
 		} else {
-			ret["protocol"] = "2005"
+			ret["Protocol"] = "2005"
 		}
 		if bFlag[len(bFlag)-2:len(bFlag)-1] == "1" {
-			ret["has-pn"] = "1"
+			ret["HasPN"] = "1"
 		} else {
-			ret["need-reply"] = "0"
+			ret["HasPN"] = "0"
 		}
 		if bFlag[len(bFlag)-1:] == "1" {
-			ret["need-reply"] = "1"
+			ret["NeedReply"] = "1"
 		} else {
-			ret["need-reply"] = "0"
+			ret["NeedReply"] = "0"
 		}
 	} else {
-		ret["protocol"] = "2005"
-		ret["has-pn"] = "0"
-		ret["need-reply"] = "0"
+		ret["Protocol"] = "2005"
+		ret["HasPN"] = "0"
+		ret["NeedReply"] = "0"
 	}
 }
 
 // 校验数据
 func (*util) validate(ret map[string]string) error {
-	if _, ok := ret["st"]; !ok {
+	if _, ok := ret["ST"]; !ok {
 		return errors.New("ST字段不存在")
 	}
-	if _, ok := ret["cn"]; !ok {
+	if _, ok := ret["CN"]; !ok {
 		return errors.New("CN字段不存在")
 	}
-	if _, ok := ret["mn"]; !ok {
+	if _, ok := ret["MN"]; !ok {
 		return errors.New("MN字段不存在")
 	}
 	return nil
