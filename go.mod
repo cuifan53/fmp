@@ -1,4 +1,4 @@
-module fmp
+module github.com/cuifan53/fmp
 
 go 1.15
 
