@@ -18,6 +18,12 @@ type Msg struct {
 	mu      sync.RWMutex
 }
 
+func (m *Msg) GetConn() *Conn {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.conn
+}
+
 func (m *Msg) GetDataMap() map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
