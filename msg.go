@@ -1,5 +1,7 @@
 package fmp
 
+import "sync"
+
 const (
 	MsgHeader     = "##"
 	MsgEof        = "\r\n"
@@ -10,6 +12,13 @@ const (
 )
 
 type Msg struct {
-	Data    []byte
-	DataMap map[string]string
+	data    []byte
+	dataMap map[string]string
+	mu      sync.RWMutex
+}
+
+func (m *Msg) GetDataMap() map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.dataMap
 }
