@@ -118,7 +118,7 @@ func (c *Conn) receiveMsg() (*Msg, error) {
 		// Data 不包含Eof结尾
 		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
 	}
-	dataMap, err := ut.parse(string(m.data))
+	dataMap, err := U.parse(string(m.data))
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (c *Conn) SendMsg(data string) error {
 		return errors.New("mn " + c.mn + " conn closed when send msg")
 	}
 	c.mu.RUnlock()
-	c.msgChan <- []byte(ut.pack(data))
+	c.msgChan <- []byte(U.Pack(data))
 	return nil
 }
 

@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-var ut = &util{}
+var U = &util{}
 
 type util struct{}
 
-func (u *util) pack(data string) string {
+func (u *util) Pack(data string) string {
 	dataLenStr := strconv.Itoa(len(data))
 	header := MsgHeader + ("0000" + dataLenStr)[len(dataLenStr):]
 	crc := u.crc(data)
