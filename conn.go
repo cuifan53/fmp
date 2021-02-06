@@ -74,7 +74,7 @@ func (c *Conn) reader() {
 			}
 			// 触发mn变化回调
 			if c.mn == "" {
-				c.mn = msg.dataMap["mn"]
+				c.mn = msg.parsedData.Mn
 				c.server.addConn(c)
 				go c.server.handler.OnMn(c)
 			}
@@ -121,11 +121,11 @@ func (c *Conn) receiveMsg() (*Msg, error) {
 		// Data 不包含Eof结尾
 		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
 	}
-	dataMap, err := U.parse(string(msg.data))
+	parsedData, err := U.parse(string(msg.data))
 	if err != nil {
 		return nil, err
 	}
-	msg.dataMap = dataMap
+	msg.parsedData = parsedData
 	return msg, nil
 }
 

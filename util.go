@@ -42,10 +42,10 @@ func (*util) crc(s string) string {
 }
 
 // 解析tcp数据包
-func (u *util) parse(originMsg string) (map[string]string, error) {
-	ret := make(map[string]string)
-	// 原始报文
-	ret["OriginMsg"] = originMsg
+func (u *util) parse(originMsg string) (*ParsedData, error) {
+	parsedData := ParsedData{
+		OriginMsg: originMsg,
+	}
 	dataAndCrc := originMsg[MsgHeaderLen+MsgDataLenLen:]
 	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLen]
 	crc := dataAndCrc[len(data):]
@@ -58,34 +58,45 @@ func (u *util) parse(originMsg string) (map[string]string, error) {
 	tmp := strings.Split(data, "CP=&&")
 	// 编码区
 	code := tmp[0] // ST=32;CN=2011;PW=123456;MN=WXTC20191121196;Flag=0;
-	u.parseCode(ret, code)
+	u.parseCode(&parsedData, code)
 	// CP区
 	cp := tmp[1][:len(tmp[1])-2] // 这里的2是字符串最后的2个&&
-	ret["CP"] = cp
-	u.parseCp(ret, cp)
+	parsedData.Cp = cp
+	u.parseCp(&parsedData, cp)
 	// 解析Flag
-	u.parseFlag(ret)
+	u.parseFlag(&parsedData)
 	// 数据校验
-	if err := u.validate(ret); err != nil {
+	if err := u.validate(&parsedData); err != nil {
 		return nil, err
 	}
-	return ret, nil
+	return &parsedData, nil
 }
 
 // 解析编码区
-func (*util) parseCode(ret map[string]string, code string) {
+func (*util) parseCode(parsedData *ParsedData, code string) {
+	m := make(map[string]string)
 	tmp := strings.Split(code, ";") // ["ST=32", "CN=2011"]
 	for _, v := range tmp {
 		if !strings.Contains(v, "=") {
 			continue
 		}
 		tmp1 := strings.Split(v, "=") // ["ST", 32]
-		ret[tmp1[0]] = tmp1[1]
+		m[tmp1[0]] = tmp1[1]
 	}
+	parsedData.Qn = m["QN"]
+	parsedData.St = m["ST"]
+	parsedData.Cn = m["CN"]
+	parsedData.Pw = m["PW"]
+	parsedData.Mn = m["MN"]
+	flag, _ := strconv.Atoi(m["Flag"])
+	parsedData.Flag = flag
+	parsedData.Pnum = m["PNUM"]
+	parsedData.Pno = m["PNO"]
 }
 
 // 解析CP数据区
-func (*util) parseCp(ret map[string]string, cp string) {
+func (*util) parseCp(parsedData *ParsedData, cp string) {
+	m := make(map[string]string)
 	tmp := strings.Split(cp, ";") // ["DataTime=20200114120000", "011-Rtd=0,011-Flag=B"]
 	for _, v := range tmp {
 		if !strings.Contains(v, "=") {
@@ -93,7 +104,7 @@ func (*util) parseCp(ret map[string]string, cp string) {
 		}
 		if !strings.Contains(v, ",") { // DataTime=20200114120000
 			tmp1 := strings.Split(v, "=") // ["DataTime", 20200114120000]
-			ret[tmp1[0]] = tmp1[1]
+			m[tmp1[0]] = tmp1[1]
 		} else { // 011-Rtd=0,011-Flag=B
 			tmp2 := strings.Split(v, ",") // ["011-Rtd=0", "011-Flag=B"]
 			for _, v1 := range tmp2 {
@@ -101,10 +112,11 @@ func (*util) parseCp(ret map[string]string, cp string) {
 					continue
 				}
 				tmp3 := strings.Split(v1, "=") // ["011-Rtd", 0]
-				ret[tmp3[0]] = tmp3[1]
+				m[tmp3[0]] = tmp3[1]
 			}
 		}
 	}
+	parsedData.ParsedCp = m
 }
 
 // 解析Flag
@@ -124,42 +136,35 @@ func (*util) parseCp(ret map[string]string, cp string) {
 // 9      00001001   2017扩展版 无数据包序号 需应答
 // 10     00001010   2017扩展版 有数据包序号 无需应答
 // 11     00001011   2017扩展版 有数据包序号 需应答
-func (*util) parseFlag(ret map[string]string) {
-	if flag, ok := ret["Flag"]; ok {
-		flagInt64, _ := strconv.ParseInt(flag, 10, 64)
-		bFlag := strconv.FormatInt(flagInt64, 2)
-		bFlag = ("00000000" + bFlag)[len(bFlag):]
-		if bFlag[4:5] == "1" || bFlag[5:6] == "1" {
-			ret["Protocol"] = "2017"
-		} else {
-			ret["Protocol"] = "2005"
-		}
-		if bFlag[len(bFlag)-2:len(bFlag)-1] == "1" {
-			ret["HasPN"] = "1"
-		} else {
-			ret["HasPN"] = "0"
-		}
-		if bFlag[len(bFlag)-1:] == "1" {
-			ret["NeedReply"] = "1"
-		} else {
-			ret["NeedReply"] = "0"
-		}
+func (*util) parseFlag(parsedData *ParsedData) {
+	bFlag := strconv.FormatInt(int64(parsedData.Flag), 2)
+	bFlag = ("00000000" + bFlag)[len(bFlag):]
+	if bFlag[4:5] == "1" || bFlag[5:6] == "1" {
+		parsedData.Protocol = "2017"
 	} else {
-		ret["Protocol"] = "2005"
-		ret["HasPN"] = "0"
-		ret["NeedReply"] = "0"
+		parsedData.Protocol = "2005"
+	}
+	if bFlag[len(bFlag)-2:len(bFlag)-1] == "1" {
+		parsedData.HasPno = true
+	} else {
+		parsedData.HasPno = false
+	}
+	if bFlag[len(bFlag)-1:] == "1" {
+		parsedData.NeedReply = true
+	} else {
+		parsedData.NeedReply = false
 	}
 }
 
 // 校验数据
-func (*util) validate(ret map[string]string) error {
-	if _, ok := ret["ST"]; !ok {
+func (*util) validate(parsedData *ParsedData) error {
+	if parsedData.St == "" {
 		return errors.New("ST字段不存在")
 	}
-	if _, ok := ret["CN"]; !ok {
+	if parsedData.Cn == "" {
 		return errors.New("CN字段不存在")
 	}
-	if _, ok := ret["MN"]; !ok {
+	if parsedData.Mn == "" {
 		return errors.New("MN字段不存在")
 	}
 	return nil
