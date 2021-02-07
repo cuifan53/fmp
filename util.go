@@ -90,8 +90,10 @@ func (*util) parseCode(parsedData *ParsedData, code string) {
 	parsedData.Mn = m["MN"]
 	flag, _ := strconv.Atoi(m["Flag"])
 	parsedData.Flag = flag
-	parsedData.Pnum = m["PNUM"]
-	parsedData.Pno = m["PNO"]
+	pnum, _ := strconv.Atoi(m["PNUM"])
+	parsedData.Pnum = pnum
+	pno, _ := strconv.Atoi(m["PNO"])
+	parsedData.Pno = pno
 }
 
 // 解析CP数据区
@@ -143,11 +145,6 @@ func (*util) parseFlag(parsedData *ParsedData) {
 		parsedData.Protocol = "2017"
 	} else {
 		parsedData.Protocol = "2005"
-	}
-	if bFlag[len(bFlag)-2:len(bFlag)-1] == "1" {
-		parsedData.HasPno = true
-	} else {
-		parsedData.HasPno = false
 	}
 	if bFlag[len(bFlag)-1:] == "1" {
 		parsedData.NeedReply = true
