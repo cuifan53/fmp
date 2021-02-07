@@ -12,18 +12,16 @@ const (
 )
 
 type ParsedData struct {
-	Qn   string `json:"qn"`   // 请求编码
-	St   string `json:"st"`   // 系统编码
-	Cn   string `json:"cn"`   // 命令编码
-	Pw   string `json:"pw"`   // 访问密码
-	Mn   string `json:"mn"`   // 设备唯一标识
-	Flag int    `json:"flag"` // 标志位
-	Pnum int    `json:"pnum"` // 总包数
-	Pno  int    `json:"pno"`  // 当前数据包包号
-	Cp   string `json:"cp"`   // 数据区
-
 	OriginMsg string            `json:"originMsg"` // 原始报文 不包含EOF结尾
-	ParsedCp  map[string]string `json:"parsedCp"`  // 解析数据区
+	Qn        string            `json:"qn"`        // 请求编码
+	St        string            `json:"st"`        // 系统编码
+	Cn        string            `json:"cn"`        // 命令编码
+	Pw        string            `json:"pw"`        // 访问密码
+	Mn        string            `json:"mn"`        // 设备唯一标识
+	Flag      int               `json:"flag"`      // 标志位
+	Pnum      int               `json:"pnum"`      // 总包数
+	Pno       int               `json:"pno"`       // 当前数据包包号
+	Cp        map[string]string `json:"cp"`        // 数据区
 	Protocol  string            `json:"protocol"`  // 报文协议 2017 | 2005
 	NeedReply bool              `json:"needReply"` // 是否需要应答
 }

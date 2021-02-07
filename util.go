@@ -61,7 +61,6 @@ func (u *util) parse(originMsg string) (*ParsedData, error) {
 	u.parseCode(&parsedData, code)
 	// CP区
 	cp := tmp[1][:len(tmp[1])-2] // 这里的2是字符串最后的2个&&
-	parsedData.Cp = cp
 	u.parseCp(&parsedData, cp)
 	// 解析Flag
 	u.parseFlag(&parsedData)
@@ -118,7 +117,7 @@ func (*util) parseCp(parsedData *ParsedData, cp string) {
 			}
 		}
 	}
-	parsedData.ParsedCp = m
+	parsedData.Cp = m
 }
 
 // 解析Flag
