@@ -54,7 +54,7 @@ func (c *Conn) stop() {
 	c.closed = true
 	c.cancel()
 	// 连接超时情况 旧连接还未断开 新连接已连上 如果server connMap里还是旧连接(没有新连接连上)
-	if c.GetConnId() == c.server.GetConn(c.mn).GetConnId() {
+	if c.mn != "" && c.connId == c.server.GetConn(c.mn).connId {
 		c.server.removeConn(c.mn)
 		go c.server.handler.OnClosed(c)
 	}
@@ -148,12 +148,6 @@ func (c *Conn) SendMsg(data string) error {
 	c.mu.RUnlock()
 	c.msgChan <- []byte(U.Pack(data))
 	return nil
-}
-
-func (c *Conn) GetConnId() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.connId
 }
 
 func (c *Conn) GetMn() string {
