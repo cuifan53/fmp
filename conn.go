@@ -8,11 +8,14 @@ import (
 	"net"
 	"strconv"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type Conn struct {
 	server  *Server
 	tcpConn *net.TCPConn
+	connId  string
 	mn      string
 	msgChan chan []byte
 	closed  bool
@@ -25,6 +28,7 @@ func newConn(server *Server, tcpConn *net.TCPConn) *Conn {
 	c := &Conn{
 		server:  server,
 		tcpConn: tcpConn,
+		connId:  uuid.New().String(),
 		msgChan: make(chan []byte),
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -49,19 +53,8 @@ func (c *Conn) stop() {
 	}
 	c.closed = true
 	c.cancel()
-	// 连接超时情况 旧连接还未断开 新连接已连上
-	nowF, err := c.tcpConn.File()
-	if err != nil {
-		l.Error(err.Error())
-		return
-	}
-	newF, err := c.server.GetConn(c.mn).tcpConn.File()
-	if err != nil {
-		l.Error(err.Error())
-		return
-	}
-	// 如果server connMap里还是旧连接(没有新连接连上)
-	if nowF.Fd() == newF.Fd() {
+	// 连接超时情况 旧连接还未断开 新连接已连上 如果server connMap里还是旧连接(没有新连接连上)
+	if c.GetConnId() == c.server.GetConn(c.mn).GetConnId() {
 		c.server.removeConn(c.mn)
 		go c.server.handler.OnClosed(c)
 	}
@@ -155,6 +148,12 @@ func (c *Conn) SendMsg(data string) error {
 	c.mu.RUnlock()
 	c.msgChan <- []byte(U.Pack(data))
 	return nil
+}
+
+func (c *Conn) GetConnId() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connId
 }
 
 func (c *Conn) GetMn() string {
