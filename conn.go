@@ -49,8 +49,22 @@ func (c *Conn) stop() {
 	}
 	c.closed = true
 	c.cancel()
-	c.server.removeConn(c.mn)
-	go c.server.handler.OnClosed(c)
+	// 连接超时情况 旧连接还未断开 新连接已连上
+	nowF, err := c.tcpConn.File()
+	if err != nil {
+		l.Error(err.Error())
+		return
+	}
+	newF, err := c.server.GetConn(c.mn).tcpConn.File()
+	if err != nil {
+		l.Error(err.Error())
+		return
+	}
+	// 如果server connMap里还是旧连接(没有新连接连上)
+	if nowF.Fd() == newF.Fd() {
+		c.server.removeConn(c.mn)
+		go c.server.handler.OnClosed(c)
+	}
 }
 
 func (c *Conn) reader() {
@@ -75,8 +89,11 @@ func (c *Conn) reader() {
 			// 触发mn变化回调
 			if c.mn == "" {
 				c.mn = msg.parsedData.Mn
+				// 如果此mn不存在连接 则执行OnMn回调
+				if exist := c.server.GetConn(c.mn); exist == nil {
+					go c.server.handler.OnMn(c)
+				}
 				c.server.addConn(c)
-				go c.server.handler.OnMn(c)
 			}
 			// 触发接收报文回调
 			if err := c.server.antsPool.Invoke(msg); err != nil {
