@@ -68,13 +68,10 @@ func (c *Conn) reader() {
 			return
 		default:
 			msg, err := c.receiveMsg()
-			if err == io.EOF { // 客户端断开连接
-				l.Warning("conn " + c.mn + " is stopped")
-				return
-			}
 			if err != nil {
+				l.Warning("conn " + c.mn + " is stopped")
 				l.Error(err.Error())
-				continue
+				return
 			}
 			if msg == nil {
 				continue
@@ -141,7 +138,7 @@ func (c *Conn) receiveMsg() (*Msg, error) {
 
 func (c *Conn) SendMsg(data string) error {
 	c.mu.RLock()
-	if c.closed == true {
+	if c.closed {
 		c.mu.RUnlock()
 		return errors.New("mn " + c.mn + " conn closed when send msg")
 	}
