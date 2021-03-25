@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"sync"
 
@@ -71,9 +70,6 @@ func (c *Conn) reader() {
 		default:
 			_, err := c.tcpConn.Read(c.recvBuf)
 			if err != nil {
-				if err == io.EOF {
-					continue
-				}
 				l.Warning("conn " + c.mn + " is stopped")
 				l.Error(err.Error())
 				return
@@ -137,34 +133,6 @@ func (c *Conn) writer() {
 		}
 	}
 }
-
-//func (c *Conn) receiveMsg() (*Msg, error) {
-//	// 包头+数据段长度部分
-//	headData := make([]byte, MsgHeaderLen+MsgDataLenLen)
-//	if _, err := io.ReadFull(c.tcpConn, headData); err != nil {
-//		return nil, err
-//	}
-//	dataLen, err := strconv.Atoi(string(headData)[MsgHeaderLen:])
-//	if err != nil {
-//		return nil, err
-//	}
-//	// 数据段+crc段+eof结尾部分
-//	data := make([]byte, dataLen+MsgCrcLen+MsgEofLen)
-//	if _, err := io.ReadFull(c.tcpConn, data); err != nil {
-//		return nil, err
-//	}
-//	msg := &Msg{
-//		conn: c,
-//		// Data 不包含Eof结尾
-//		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
-//	}
-//	parsedData, err := U.parse(string(msg.data))
-//	if err != nil {
-//		return nil, err
-//	}
-//	msg.parsedData = parsedData
-//	return msg, nil
-//}
 
 func (c *Conn) SendMsg(data string) error {
 	c.mu.RLock()
