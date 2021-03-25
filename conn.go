@@ -6,30 +6,31 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
 )
 
 type Conn struct {
-	server  *Server
-	tcpConn *net.TCPConn
-	connId  string
-	mn      string
-	msgChan chan []byte
-	closed  bool
-	ctx     context.Context
-	cancel  context.CancelFunc
-	mu      sync.RWMutex
+	server      *Server
+	tcpConn     *net.TCPConn
+	connId      string
+	mn          string
+	recvBuf     []byte
+	sendMsgChan chan []byte
+	closed      bool
+	ctx         context.Context
+	cancel      context.CancelFunc
+	mu          sync.RWMutex
 }
 
 func newConn(server *Server, tcpConn *net.TCPConn) *Conn {
 	c := &Conn{
-		server:  server,
-		tcpConn: tcpConn,
-		connId:  uuid.New().String(),
-		msgChan: make(chan []byte),
+		server:      server,
+		tcpConn:     tcpConn,
+		connId:      uuid.New().String(),
+		recvBuf:     make([]byte, 8192),
+		sendMsgChan: make(chan []byte),
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	return c
@@ -37,6 +38,7 @@ func newConn(server *Server, tcpConn *net.TCPConn) *Conn {
 
 func (c *Conn) start() {
 	go c.reader()
+	go c.dealRecvBuf()
 	go c.writer()
 	go c.server.handler.OnOpened(c)
 }
@@ -67,14 +69,40 @@ func (c *Conn) reader() {
 		case <-c.ctx.Done():
 			return
 		default:
-			msg, err := c.receiveMsg()
+			_, err := c.tcpConn.Read(c.recvBuf)
 			if err != nil {
+				if err == io.EOF {
+					continue
+				}
 				l.Warning("conn " + c.mn + " is stopped")
 				l.Error(err.Error())
 				return
 			}
-			if msg == nil {
+		}
+	}
+}
+
+func (c *Conn) dealRecvBuf() {
+	defer c.stop()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		default:
+			if !bytes.Contains(c.recvBuf, []byte(MsgEof)) {
 				continue
+			}
+			eofIdx := bytes.Index(c.recvBuf, []byte(MsgEof))
+			originMsg := c.recvBuf[:eofIdx]
+			parsedData, err := U.parse(string(originMsg))
+			if err != nil {
+				l.Error(err.Error())
+				return
+			}
+			msg := &Msg{
+				conn:       c,
+				data:       originMsg,
+				parsedData: parsedData,
 			}
 			// 触发mn变化回调
 			if c.mn == "" {
@@ -90,6 +118,8 @@ func (c *Conn) reader() {
 				l.Error(err.Error())
 				continue
 			}
+			// 去掉已处理报文 并扩容至原始长度
+			c.recvBuf = bytes.Join([][]byte{c.recvBuf[eofIdx+MsgEofLen:], make([]byte, eofIdx+MsgEofLen)}, []byte{})
 		}
 	}
 }
@@ -99,7 +129,7 @@ func (c *Conn) writer() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case data := <-c.msgChan:
+		case data := <-c.sendMsgChan:
 			if _, err := c.tcpConn.Write(data); err != nil {
 				l.Error(err.Error())
 				return
@@ -108,33 +138,33 @@ func (c *Conn) writer() {
 	}
 }
 
-func (c *Conn) receiveMsg() (*Msg, error) {
-	// 包头+数据段长度部分
-	headData := make([]byte, MsgHeaderLen+MsgDataLenLen)
-	if _, err := io.ReadFull(c.tcpConn, headData); err != nil {
-		return nil, err
-	}
-	dataLen, err := strconv.Atoi(string(headData)[MsgHeaderLen:])
-	if err != nil {
-		return nil, err
-	}
-	// 数据段+crc段+eof结尾部分
-	data := make([]byte, dataLen+MsgCrcLen+MsgEofLen)
-	if _, err := io.ReadFull(c.tcpConn, data); err != nil {
-		return nil, err
-	}
-	msg := &Msg{
-		conn: c,
-		// Data 不包含Eof结尾
-		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
-	}
-	parsedData, err := U.parse(string(msg.data))
-	if err != nil {
-		return nil, err
-	}
-	msg.parsedData = parsedData
-	return msg, nil
-}
+//func (c *Conn) receiveMsg() (*Msg, error) {
+//	// 包头+数据段长度部分
+//	headData := make([]byte, MsgHeaderLen+MsgDataLenLen)
+//	if _, err := io.ReadFull(c.tcpConn, headData); err != nil {
+//		return nil, err
+//	}
+//	dataLen, err := strconv.Atoi(string(headData)[MsgHeaderLen:])
+//	if err != nil {
+//		return nil, err
+//	}
+//	// 数据段+crc段+eof结尾部分
+//	data := make([]byte, dataLen+MsgCrcLen+MsgEofLen)
+//	if _, err := io.ReadFull(c.tcpConn, data); err != nil {
+//		return nil, err
+//	}
+//	msg := &Msg{
+//		conn: c,
+//		// Data 不包含Eof结尾
+//		data: bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen],
+//	}
+//	parsedData, err := U.parse(string(msg.data))
+//	if err != nil {
+//		return nil, err
+//	}
+//	msg.parsedData = parsedData
+//	return msg, nil
+//}
 
 func (c *Conn) SendMsg(data string) error {
 	c.mu.RLock()
@@ -143,7 +173,7 @@ func (c *Conn) SendMsg(data string) error {
 		return errors.New("mn " + c.mn + " conn closed when send msg")
 	}
 	c.mu.RUnlock()
-	c.msgChan <- []byte(U.Pack(data))
+	c.sendMsgChan <- []byte(U.Pack(data))
 	return nil
 }
 
