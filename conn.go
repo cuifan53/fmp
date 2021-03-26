@@ -72,15 +72,29 @@ func (c *Conn) reader() {
 			return
 		default:
 			// 包头+数据段长度部分
-			headData := make([]byte, MsgHeaderLen+MsgDataLenLen)
-			if _, err := io.ReadFull(c.tcpConn, headData); err != nil {
+			head1 := make([]byte, 1)
+			if _, err := io.ReadFull(c.tcpConn, head1); err != nil {
 				l.Error(err.Error())
 				return
 			}
-			dataLen, err := strconv.Atoi(string(headData)[MsgHeaderLen:])
-			if err != nil {
-				// 出现误码抛弃当前数据 直接进入下次循环接收
+			if !bytes.Equal(head1, []byte("#")) {
+				continue
+			}
+			head2 := make([]byte, 1)
+			if _, err := io.ReadFull(c.tcpConn, head2); err != nil {
 				l.Error(err.Error())
+				return
+			}
+			if !bytes.Equal(head2, []byte("#")) {
+				continue
+			}
+			head3 := make([]byte, MsgDataLenLen)
+			if _, err := io.ReadFull(c.tcpConn, head3); err != nil {
+				l.Error(err.Error())
+				return
+			}
+			dataLen, err := strconv.Atoi(string(head3))
+			if err != nil {
 				continue
 			}
 			// 数据段+crc段+eof结尾部分
@@ -90,7 +104,7 @@ func (c *Conn) reader() {
 				return
 			}
 			// OriginMsg 不包含Eof结尾
-			originMsg := bytes.Join([][]byte{headData, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen]
+			originMsg := bytes.Join([][]byte{head1, head2, head3, data}, []byte{})[:MsgHeaderLen+MsgDataLenLen+dataLen+MsgCrcLen]
 			c.recvMsgChan <- originMsg
 		}
 	}
