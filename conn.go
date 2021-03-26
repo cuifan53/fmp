@@ -79,8 +79,9 @@ func (c *Conn) reader() {
 			}
 			dataLen, err := strconv.Atoi(string(headData)[MsgHeaderLen:])
 			if err != nil {
+				// 出现误码抛弃当前数据 直接进入下次循环接收
 				l.Error(err.Error())
-				return
+				continue
 			}
 			// 数据段+crc段+eof结尾部分
 			data := make([]byte, dataLen+MsgCrcLen+MsgEofLen)
