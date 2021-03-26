@@ -14,7 +14,7 @@ type IEventHandler interface {
 	// 关闭连接时调用
 	OnClosed(conn *Conn)
 	// MN发生变化时调用
-	OnMn(conn *Conn)
+	OnMn(mn string, onoffline bool)
 	// 接收报文时调用
 	React(msg *Msg)
 }

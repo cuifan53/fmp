@@ -141,13 +141,8 @@ func (c *Conn) worker() {
 				parsedData: parsedData,
 			}
 			// 触发mn变化回调
-			if c.mn == "" {
-				c.mn = msg.parsedData.Mn
-				// 如果此mn不存在连接 则执行OnMn回调
-				if exist := c.server.GetConn(c.mn); exist == nil {
-					go c.server.handler.OnMn(c)
-				}
-				c.server.addConn(c)
+			if c.mn != msg.parsedData.Mn {
+				go c.mnLogic(msg.parsedData.Mn)
 			}
 			// 触发接收报文回调
 			if err := c.server.antsPool.Invoke(msg); err != nil {
@@ -155,6 +150,15 @@ func (c *Conn) worker() {
 			}
 		}
 	}
+}
+
+func (c *Conn) mnLogic(mn string) {
+	if c.mn != "" {
+		c.server.handler.OnMn(c.mn, false)
+	}
+	c.SetMn(mn)
+	c.server.addConn(c)
+	c.server.handler.OnMn(mn, true)
 }
 
 func (c *Conn) SendMsg(data string) error {
@@ -172,6 +176,12 @@ func (c *Conn) GetMn() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.mn
+}
+
+func (c *Conn) SetMn(mn string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	c.mn = mn
 }
 
 func (c *Conn) RemoteAddr() string {
