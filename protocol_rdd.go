@@ -3,6 +3,7 @@ package fmp
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +27,13 @@ type RepParamRdd struct {
 	RepCode      string `json:"repCode"` // 回包码
 	RepStat      string `json:"repStat"` // 回包状态 Success Fail
 	RepSendParam string `json:"repSendParam"`
+}
+
+func PackRdd(data string) []byte {
+	dataLenStr := strconv.Itoa(len(data))
+	header := MsgHeaderRdd + ("00000000" + dataLenStr)[len(dataLenStr):]
+	crcData := crc(data)
+	return []byte(header + data + crcData + MsgEofRdd)
 }
 
 // 解析tcp数据包
