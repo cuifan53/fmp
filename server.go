@@ -18,7 +18,7 @@ type EventHandler interface {
 	OnOpened(c gnet.Conn)
 	OnClosed(c gnet.Conn)
 	OnMn(mn string, connect bool)
-	React(msg *Msg)
+	React(c gnet.Conn, msg *Msg)
 }
 
 func NewServer(port string, protocol Protocol, handler EventHandler) *Server {
@@ -94,26 +94,26 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 			return
 		}
 		mn = parsedDataRdd.Mn
-	default:
+	}
+	if mn == "" {
 		return
 	}
 
 	msg := &Msg{
-		conn:          c,
 		data:          frame,
 		parsedDataNS:  parsedDataNS,
 		parsedDataRdd: parsedDataRdd,
 	}
 	if s.GetConn(mn) != c {
 		s.setConn(mn, c)
-		go s.handler.OnMn(mn, true)
+		s.handler.OnMn(mn, true)
 	}
-	go s.handler.React(msg)
+	s.handler.React(c, msg)
 	return
 }
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
-	go s.handler.OnOpened(c)
+	s.handler.OnOpened(c)
 	return
 }
 
@@ -123,9 +123,9 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 	for mn, conn := range s.connMap {
 		if conn == c {
 			delete(s.connMap, mn)
-			go s.handler.OnMn(mn, false)
+			s.handler.OnMn(mn, false)
 		}
 	}
-	go s.handler.OnClosed(c)
+	s.handler.OnClosed(c)
 	return
 }
