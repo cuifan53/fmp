@@ -1,83 +1,131 @@
 package fmp
 
 import (
-	"fmt"
-	"net"
+	"errors"
 	"sync"
 
-	"github.com/panjf2000/ants/v2"
+	"github.com/panjf2000/gnet"
 )
 
-type IEventHandler interface {
-	// 打开连接时调用
-	OnOpened(conn *Conn)
-	// 关闭连接时调用
-	OnClosed(conn *Conn)
-	// MN发生变化时调用
-	OnMn(mn string, onoffline bool)
-	// 接收报文时调用
+type Protocol int
+
+const (
+	ProtocolNS  Protocol = iota // 国标协议(2017 & 2005)
+	ProtocolRdd                 // 远程设备调试协议
+)
+
+type EventHandler interface {
+	OnOpened(c gnet.Conn)
+	OnClosed(c gnet.Conn)
+	OnMn(mn string, connect bool)
 	React(msg *Msg)
 }
 
-type Server struct {
-	port     int
-	connMap  map[string]*Conn
-	handler  IEventHandler
-	mu       sync.RWMutex
-	antsPool *ants.PoolWithFunc
+func NewServer(port string, protocol Protocol, handler EventHandler) *Server {
+	return &Server{
+		connMap:  make(map[string]gnet.Conn),
+		port:     port,
+		protocol: protocol,
+		handler:  handler,
+	}
 }
 
-func NewServer(port, poolSize int, handler IEventHandler) *Server {
-	antsPool, err := ants.NewPoolWithFunc(poolSize, func(i interface{}) {
-		handler.React(i.(*Msg))
-	})
-	if err != nil {
-		panic(err)
-	}
-	return &Server{
-		port:     port,
-		connMap:  make(map[string]*Conn),
-		handler:  handler,
-		antsPool: antsPool,
-	}
+type Server struct {
+	*gnet.EventServer
+	mu       sync.RWMutex
+	connMap  map[string]gnet.Conn
+	port     string
+	protocol Protocol
+	handler  EventHandler
 }
 
 func (s *Server) Serve() {
-	defer s.antsPool.Release()
-	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", s.port))
-	if err != nil {
+	if err := gnet.Serve(
+		s,
+		s.port,
+		gnet.WithMulticore(true),
+		gnet.WithCodec(&delimiterCodec{delimiter: s.getDelimiter()}),
+	); err != nil {
 		panic(err)
 	}
-	lis, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		panic(err)
-	}
-	l.Info(fmt.Sprintf("fmp-server start success. listening port: %d", s.port))
-	for {
-		tcpConn, err := lis.AcceptTCP()
-		if err != nil {
-			l.Error(err.Error())
-			continue
-		}
-		conn := newConn(s, tcpConn)
-		go conn.start()
-	}
 }
 
-func (s *Server) addConn(conn *Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.connMap[conn.mn] = conn
-}
-
-func (s *Server) removeConn(mn string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.connMap, mn)
-}
-
-func (s *Server) GetConn(mn string) *Conn {
+func (s *Server) GetConn(mn string) gnet.Conn {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.connMap[mn]
+}
+
+func (s *Server) setConn(mn string, conn gnet.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connMap[mn] = conn
+}
+
+func (s *Server) getDelimiter() []byte {
+	var delimiter []byte
+	switch s.protocol {
+	case ProtocolNS:
+		delimiter = []byte(MsgEofNS)
+	case ProtocolRdd:
+		delimiter = []byte(MsgEofRdd)
+	default:
+		panic(errors.New("protocol incorrect"))
+	}
+	return delimiter
+}
+
+func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
+	var err error
+	var parsedDataNS *ParsedDataNS
+	var parsedDataRdd *ParsedDataRdd
+	var mn string
+
+	switch s.protocol {
+	case ProtocolNS:
+		parsedDataNS, err = parseNS(string(frame))
+		if err != nil {
+			return
+		}
+		mn = parsedDataNS.Mn
+	case ProtocolRdd:
+		parsedDataRdd, err = parseRdd(string(frame))
+		if err != nil {
+			return
+		}
+		mn = parsedDataRdd.Mn
+	default:
+		return
+	}
+
+	msg := &Msg{
+		conn:          c,
+		data:          frame,
+		parsedDataNS:  parsedDataNS,
+		parsedDataRdd: parsedDataRdd,
+	}
+	if s.GetConn(mn) != c {
+		s.setConn(mn, c)
+		go s.handler.OnMn(mn, true)
+	}
+	go s.handler.React(msg)
+	return
+}
+
+func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
+	go s.handler.OnOpened(c)
+	return
+}
+
+func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for mn, conn := range s.connMap {
+		if conn == c {
+			delete(s.connMap, mn)
+			go s.handler.OnMn(mn, false)
+		}
+	}
+	go s.handler.OnClosed(c)
+	return
 }
