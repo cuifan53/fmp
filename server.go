@@ -50,6 +50,18 @@ func (s *Server) Serve() {
 	}
 }
 
+func (s *Server) GetMns() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	mns := make([]string, 0)
+	for mn, _ := range s.connMap {
+		if mn != "" {
+			mns = append(mns, mn)
+		}
+	}
+	return mns
+}
+
 func (s *Server) GetConn(mn string) gnet.Conn {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
