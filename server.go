@@ -74,6 +74,12 @@ func (s *Server) setConn(mn string, conn gnet.Conn) {
 	s.connMap[mn] = conn
 }
 
+func (s *Server) removeConn(mn string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.connMap, mn)
+}
+
 func (s *Server) getDelimiter() []byte {
 	var delimiter []byte
 	switch s.protocol {
@@ -130,11 +136,9 @@ func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
 }
 
 func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	for mn, conn := range s.connMap {
 		if conn == c {
-			delete(s.connMap, mn)
+			s.removeConn(mn)
 			s.handler.OnMn(mn, false)
 		}
 	}
