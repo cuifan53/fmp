@@ -93,11 +93,29 @@ func (s *Server) getDelimiter() []byte {
 	return delimiter
 }
 
+func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
+	s.handler.OnOpened(c)
+	return
+}
+
+func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
+	for mn, conn := range s.connMap {
+		if conn == c {
+			s.removeConn(mn)
+			s.handler.OnMn(mn, false)
+		}
+	}
+	s.handler.OnClosed(c)
+	return
+}
+
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	var err error
-	var parsedDataNS *ParsedDataNS
-	var parsedDataRdd *ParsedDataRdd
-	var mn string
+	var (
+		err           error
+		parsedDataNS  *ParsedDataNS
+		parsedDataRdd *ParsedDataRdd
+		mn            string
+	)
 
 	switch s.protocol {
 	case ProtocolNS:
@@ -127,21 +145,5 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 		s.handler.OnMn(mn, true)
 	}
 	s.handler.React(c, msg)
-	return
-}
-
-func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
-	s.handler.OnOpened(c)
-	return
-}
-
-func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
-	for mn, conn := range s.connMap {
-		if conn == c {
-			s.removeConn(mn)
-			s.handler.OnMn(mn, false)
-		}
-	}
-	s.handler.OnClosed(c)
 	return
 }
