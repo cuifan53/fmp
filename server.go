@@ -43,6 +43,7 @@ func (s *Server) Serve() {
 	if err := gnet.Serve(
 		s,
 		s.port,
+		gnet.WithReusePort(true),
 		gnet.WithMulticore(true),
 		gnet.WithCodec(&delimiterCodec{delimiter: s.getDelimiter()}),
 	); err != nil {
