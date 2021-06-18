@@ -51,6 +51,23 @@ func (s *Server) Serve() {
 	}
 }
 
+// Send 发送报文
+func (s *Server) Send(mn, data string) error {
+	conn := s.GetConn(mn)
+	if conn == nil {
+		return errors.New("mn: " + mn + ",Tcp connection incorrect")
+	}
+	switch s.protocol {
+	case ProtocolNS:
+		return conn.AsyncWrite(protocol.PackNS(data))
+	case ProtocolRdd:
+		return conn.AsyncWrite(protocol.PackRdd(data))
+	default:
+		return errors.New("protocol incorrect")
+	}
+}
+
+// GetMns 获取所有MN
 func (s *Server) GetMns() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -63,6 +80,7 @@ func (s *Server) GetMns() []string {
 	return mns
 }
 
+// GetConn 通过MN获取Tcp连接
 func (s *Server) GetConn(mn string) gnet.Conn {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -93,6 +111,8 @@ func (s *Server) getDelimiter() []byte {
 	}
 	return delimiter
 }
+
+// ** 以下为重写server内部gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
 	s.handler.OnOpened(c)
