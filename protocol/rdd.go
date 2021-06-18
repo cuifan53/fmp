@@ -8,7 +8,7 @@ import (
 )
 
 type Rdd struct {
-	name       string
+	name       ProtocolName
 	header     string
 	dataLenLen int
 	crcLen     int
@@ -95,6 +95,6 @@ func (p *Rdd) Eof() []byte {
 	return []byte(p.eof)
 }
 
-func (p *Rdd) Name() string {
+func (p *Rdd) Name() ProtocolName {
 	return p.name
 }

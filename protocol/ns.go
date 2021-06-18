@@ -7,7 +7,7 @@ import (
 )
 
 type Ns struct {
-	name       string
+	name       ProtocolName
 	header     string
 	dataLenLen int
 	crcLen     int
@@ -132,6 +132,6 @@ func (p *Ns) Eof() []byte {
 	return []byte(p.eof)
 }
 
-func (p *Ns) Name() string {
+func (p *Ns) Name() ProtocolName {
 	return p.name
 }

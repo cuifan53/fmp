@@ -9,15 +9,15 @@ type IProtocol interface {
 	Parse(originMsg string) (interface{}, error)
 	Pack(data string) []byte
 	Eof() []byte
-	Name() string
+	Name() ProtocolName
 }
 
 // ProtocolName 协议名称
 type ProtocolName string
 
 const (
-	ProtocolNameNs  = "Ns"  // 国标协议(2017 & 2005)
-	ProtocolNameRdd = "Rdd" // 远程设备调试协议
+	ProtocolNameNs  ProtocolName = "Ns"  // 国标协议(2017 & 2005)
+	ProtocolNameRdd ProtocolName = "Rdd" // 远程设备调试协议
 )
 
 // NewProtocol 创建协议
