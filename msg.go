@@ -9,7 +9,7 @@ import (
 type Msg struct {
 	mu            sync.RWMutex
 	data          []byte
-	parsedDataNS  *protocol.ParsedDataNS
+	parsedDataNs  *protocol.ParsedDataNs
 	parsedDataRdd *protocol.ParsedDataRdd
 }
 
@@ -19,10 +19,10 @@ func (m *Msg) GetData() []byte {
 	return m.data
 }
 
-func (m *Msg) GetParsedDataNS() *protocol.ParsedDataNS {
+func (m *Msg) GetParsedDataNs() *protocol.ParsedDataNs {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.parsedDataNS
+	return m.parsedDataNs
 }
 
 func (m *Msg) GetParsedDataRdd() *protocol.ParsedDataRdd {

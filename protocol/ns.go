@@ -4,49 +4,26 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-
-	"github.com/cuifan53/fmp"
 )
 
-const (
-	MsgHeaderNS     = "##"
-	MsgDataLenLenNS = 4
-	MsgCrcLenNS     = 4
-	MsgEofNS        = "\r\n"
-)
-
-type ParsedDataNS struct {
-	OriginMsg string            `json:"originMsg"` // 原始报文 不包含EOF结尾
-	Qn        string            `json:"qn"`        // 请求编码
-	St        string            `json:"st"`        // 系统编码
-	Cn        string            `json:"cn"`        // 命令编码
-	Pw        string            `json:"pw"`        // 访问密码
-	Mn        string            `json:"mn"`        // 设备唯一标识
-	Flag      int               `json:"flag"`      // 标志位
-	Pnum      int               `json:"pnum"`      // 总包数
-	Pno       int               `json:"pno"`       // 当前数据包包号
-	Cp        map[string]string `json:"cp"`        // 数据区
-	Protocol  string            `json:"protocol"`  // 报文协议 2017 | 2005
-	NeedReply bool              `json:"needReply"` // 是否需要应答
+type Ns struct {
+	name       string
+	header     string
+	dataLenLen int
+	crcLen     int
+	eof        string
 }
 
-func PackNS(data string) []byte {
-	dataLenStr := strconv.Itoa(len(data))
-	header := MsgHeaderNS + ("0000" + dataLenStr)[len(dataLenStr):]
-	crcData := fmp.Crc(data)
-	return []byte(header + data + crcData + MsgEofNS)
-}
-
-// ParseNS 解析tcp数据包
-func ParseNS(originMsg string) (*ParsedDataNS, error) {
-	parsedData := ParsedDataNS{
+// Parse 解析tcp数据包
+func (p *Ns) Parse(originMsg string) (interface{}, error) {
+	parsedData := ParsedDataNs{
 		OriginMsg: originMsg,
 	}
-	dataAndCrc := originMsg[len(MsgHeaderNS)+MsgDataLenLenNS:]
-	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLenNS]
+	dataAndCrc := originMsg[len(p.header)+p.dataLenLen:]
+	data := dataAndCrc[:len(dataAndCrc)-p.crcLen]
 	msgCrc := dataAndCrc[len(data):]
 	// crc校验
-	realCrc := fmp.Crc(data)
+	realCrc := crc(data)
 	if msgCrc != realCrc {
 		return nil, errors.New("crc校验失败")
 	}
@@ -54,17 +31,17 @@ func ParseNS(originMsg string) (*ParsedDataNS, error) {
 	tmp := strings.Split(data, "CP=&&")
 	// 编码区
 	code := tmp[0] // ST=32;CN=2011;PW=123456;MN=WXTC20191121196;Flag=0;
-	parseCodeNS(&parsedData, code)
+	p.parseCode(&parsedData, code)
 	// CP区
 	cp := tmp[1][:len(tmp[1])-2] // 这里的2是字符串最后的2个&&
-	parseCpNS(&parsedData, cp)
+	p.parseCp(&parsedData, cp)
 	// 解析Flag
-	parseFlagNS(&parsedData)
+	p.parseFlag(&parsedData)
 	return &parsedData, nil
 }
 
 // 解析编码区
-func parseCodeNS(parsedData *ParsedDataNS, code string) {
+func (p *Ns) parseCode(parsedData *ParsedDataNs, code string) {
 	m := make(map[string]string)
 	tmp := strings.Split(code, ";") // ["ST=32", "CN=2011"]
 	for _, v := range tmp {
@@ -88,7 +65,7 @@ func parseCodeNS(parsedData *ParsedDataNS, code string) {
 }
 
 // 解析CP数据区
-func parseCpNS(parsedData *ParsedDataNS, cp string) {
+func (p *Ns) parseCp(parsedData *ParsedDataNs, cp string) {
 	m := make(map[string]string)
 	tmp := strings.Split(cp, ";") // ["DataTime=20200114120000", "011-Rtd=0,011-Flag=B"]
 	for _, v := range tmp {
@@ -129,7 +106,7 @@ func parseCpNS(parsedData *ParsedDataNS, cp string) {
 // 9      00001001   2017扩展版 无数据包序号 需应答
 // 10     00001010   2017扩展版 有数据包序号 无需应答
 // 11     00001011   2017扩展版 有数据包序号 需应答
-func parseFlagNS(parsedData *ParsedDataNS) {
+func (p *Ns) parseFlag(parsedData *ParsedDataNs) {
 	bFlag := strconv.FormatInt(int64(parsedData.Flag), 2)
 	bFlag = ("00000000" + bFlag)[len(bFlag):]
 	if bFlag[4:5] == "1" || bFlag[5:6] == "1" {
@@ -142,4 +119,19 @@ func parseFlagNS(parsedData *ParsedDataNS) {
 	} else {
 		parsedData.NeedReply = false
 	}
+}
+
+func (p *Ns) Pack(data string) []byte {
+	dataLenStr := strconv.Itoa(len(data))
+	header := p.header + ("0000" + dataLenStr)[len(dataLenStr):]
+	crcData := crc(data)
+	return []byte(header + data + crcData + p.eof)
+}
+
+func (p *Ns) Eof() []byte {
+	return []byte(p.eof)
+}
+
+func (p *Ns) Name() string {
+	return p.name
 }

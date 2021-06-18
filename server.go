@@ -9,13 +9,6 @@ import (
 	"github.com/panjf2000/gnet"
 )
 
-type Protocol int
-
-const (
-	ProtocolNS  Protocol = iota // 国标协议(2017 & 2005)
-	ProtocolRdd                 // 远程设备调试协议
-)
-
 type EventHandler interface {
 	OnOpened(c gnet.Conn)
 	OnClosed(c gnet.Conn)
@@ -23,7 +16,13 @@ type EventHandler interface {
 	React(c gnet.Conn, msg *Msg)
 }
 
-func NewServer(port string, protocol Protocol, handler EventHandler) *Server {
+func NewServer(port string, protocol protocol.IProtocol, handler EventHandler) *Server {
+	if protocol == nil {
+		panic("protocol incorrect")
+	}
+	if handler == nil {
+		panic("handler incorrect")
+	}
 	return &Server{
 		connMap:  make(map[string]gnet.Conn),
 		port:     port,
@@ -37,7 +36,7 @@ type Server struct {
 	mu       sync.RWMutex
 	connMap  map[string]gnet.Conn
 	port     string
-	protocol Protocol
+	protocol protocol.IProtocol
 	handler  EventHandler
 }
 
@@ -45,7 +44,7 @@ func (s *Server) Serve() {
 	if err := gnet.Serve(
 		s,
 		s.port,
-		gnet.WithCodec(&delimiterCodec{delimiter: s.getDelimiter()}),
+		gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
 	); err != nil {
 		panic(err)
 	}
@@ -55,16 +54,9 @@ func (s *Server) Serve() {
 func (s *Server) Send(mn, data string) error {
 	conn := s.GetConn(mn)
 	if conn == nil {
-		return errors.New("mn: " + mn + ",Tcp connection incorrect")
+		return errors.New("mn: " + mn + ", connection incorrect")
 	}
-	switch s.protocol {
-	case ProtocolNS:
-		return conn.AsyncWrite(protocol.PackNS(data))
-	case ProtocolRdd:
-		return conn.AsyncWrite(protocol.PackRdd(data))
-	default:
-		return errors.New("protocol incorrect")
-	}
+	return conn.AsyncWrite(s.protocol.Pack(data))
 }
 
 // GetMns 获取所有MN
@@ -99,19 +91,6 @@ func (s *Server) removeConn(mn string) {
 	delete(s.connMap, mn)
 }
 
-func (s *Server) getDelimiter() []byte {
-	var delimiter []byte
-	switch s.protocol {
-	case ProtocolNS:
-		delimiter = []byte(protocol.MsgEofNS)
-	case ProtocolRdd:
-		delimiter = []byte(protocol.MsgEofRdd)
-	default:
-		panic(errors.New("protocol incorrect"))
-	}
-	return delimiter
-}
-
 // ** 以下为重写server内部gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
@@ -131,36 +110,39 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 }
 
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	var (
-		err           error
-		parsedDataNS  *protocol.ParsedDataNS
-		parsedDataRdd *protocol.ParsedDataRdd
-		mn            string
-	)
-
-	switch s.protocol {
-	case ProtocolNS:
-		parsedDataNS, err = protocol.ParseNS(string(frame))
-		if err != nil {
-			return
-		}
-		mn = parsedDataNS.Mn
-	case ProtocolRdd:
-		parsedDataRdd, err = protocol.ParseRdd(string(frame))
-		if err != nil {
-			return
-		}
-		mn = parsedDataRdd.Mn
+	parsedData, err := s.protocol.Parse(string(frame))
+	if err != nil {
+		return
 	}
+
+	mn := ""
+	msg := &Msg{
+		data: frame,
+	}
+
+	switch s.protocol.Name() {
+	case protocol.ProtocolNameNs:
+		parsedDataNs, ok := parsedData.(*protocol.ParsedDataNs)
+		if !ok {
+			return
+		}
+		msg.parsedDataNs = parsedDataNs
+		mn = parsedDataNs.Mn
+	case protocol.ProtocolNameRdd:
+		parsedDataRdd, ok := parsedData.(*protocol.ParsedDataRdd)
+		if !ok {
+			return
+		}
+		msg.parsedDataRdd = parsedDataRdd
+		mn = parsedDataRdd.Mn
+	default:
+		return
+	}
+
 	if mn == "" {
 		return
 	}
 
-	msg := &Msg{
-		data:          frame,
-		parsedDataNS:  parsedDataNS,
-		parsedDataRdd: parsedDataRdd,
-	}
 	if s.GetConn(mn) != c {
 		s.setConn(mn, c)
 		s.handler.OnMn(mn, true)

@@ -5,49 +5,26 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-
-	"github.com/cuifan53/fmp"
 )
 
-const (
-	MsgHeaderRdd     = "##**"
-	MsgDataLenLenRdd = 8
-	MsgCrcLenRdd     = 4
-	MsgEofRdd        = "**\r\n"
-)
-
-type ParsedDataRdd struct {
-	OriginMsg string       `json:"originMsg"` // 原始报文 不包含EOF结尾
-	Mn        string       `json:"mn"`        // 设备唯一标识
-	Cp        string       `json:"cp"`        // 数据区
-	Cmd       string       `json:"cmd"`       // 指令
-	CmdId     string       `json:"cmdId"`     // 指令id
-	CmdStata  string       `json:"cmdStata"`  // 指令状态 Doing End
-	RepParam  *RepParamRdd `json:"repParam"`  // 回包内容
-}
-type RepParamRdd struct {
-	RepCode      string `json:"repCode"` // 回包码
-	RepStat      string `json:"repStat"` // 回包状态 Success Fail
-	RepSendParam string `json:"repSendParam"`
+type Rdd struct {
+	name       string
+	header     string
+	dataLenLen int
+	crcLen     int
+	eof        string
 }
 
-func PackRdd(data string) []byte {
-	dataLenStr := strconv.Itoa(len(data))
-	header := MsgHeaderRdd + ("00000000" + dataLenStr)[len(dataLenStr):]
-	crcData := fmp.Crc(data)
-	return []byte(header + data + crcData + MsgEofRdd)
-}
-
-// ParseRdd 解析tcp数据包
-func ParseRdd(originMsg string) (*ParsedDataRdd, error) {
+// Parse 解析tcp数据包
+func (p *Rdd) Parse(originMsg string) (interface{}, error) {
 	parsedData := ParsedDataRdd{
 		OriginMsg: originMsg,
 	}
-	dataAndCrc := originMsg[len(MsgHeaderRdd)+MsgDataLenLenRdd:]
-	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLenRdd]
+	dataAndCrc := originMsg[len(p.header)+p.dataLenLen:]
+	data := dataAndCrc[:len(dataAndCrc)-p.crcLen]
 	msgCrc := dataAndCrc[len(data):]
 	// crc校验
-	realCrc := fmp.Crc(data)
+	realCrc := crc(data)
 	if msgCrc != realCrc {
 		return nil, errors.New("crc校验失败")
 	}
@@ -55,12 +32,12 @@ func ParseRdd(originMsg string) (*ParsedDataRdd, error) {
 	cpIndex := strings.Index(data, "CP=&&")
 	// 编码区
 	code := data[:cpIndex] // MN=WXTC20191121196
-	parseCodeRdd(&parsedData, code)
+	p.parseCode(&parsedData, code)
 	// CP区
 	cp := data[cpIndex+5:]
 	cp = cp[:len(cp)-2] // 这里的2是字符串最后的2个&&
 	if cp != "" {
-		if err := parseCpRdd(&parsedData, cp); err != nil {
+		if err := p.parseCp(&parsedData, cp); err != nil {
 			return nil, err
 		}
 	}
@@ -68,7 +45,7 @@ func ParseRdd(originMsg string) (*ParsedDataRdd, error) {
 }
 
 // 解析编码区
-func parseCodeRdd(parsedData *ParsedDataRdd, code string) {
+func (p *Rdd) parseCode(parsedData *ParsedDataRdd, code string) {
 	m := make(map[string]string)
 	tmp := strings.Split(code, ";") // ["MN=WXTC20191121196"]
 	for _, v := range tmp {
@@ -82,7 +59,7 @@ func parseCodeRdd(parsedData *ParsedDataRdd, code string) {
 }
 
 // 解析CP区
-func parseCpRdd(parsedData *ParsedDataRdd, cp string) error {
+func (p *Rdd) parseCp(parsedData *ParsedDataRdd, cp string) error {
 	parsedData.Cp = cp
 	type CpBody struct {
 		Cmd      string `json:"cmd"`
@@ -105,4 +82,19 @@ func parseCpRdd(parsedData *ParsedDataRdd, cp string) error {
 		parsedData.RepParam = &repParam
 	}
 	return nil
+}
+
+func (p *Rdd) Pack(data string) []byte {
+	dataLenStr := strconv.Itoa(len(data))
+	header := p.header + ("00000000" + dataLenStr)[len(dataLenStr):]
+	crcData := crc(data)
+	return []byte(header + data + crcData + p.eof)
+}
+
+func (p *Rdd) Eof() []byte {
+	return []byte(p.eof)
+}
+
+func (p *Rdd) Name() string {
+	return p.name
 }
