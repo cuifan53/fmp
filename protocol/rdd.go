@@ -1,10 +1,12 @@
-package fmp
+package protocol
 
 import (
 	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/cuifan53/fmp"
 )
 
 const (
@@ -32,12 +34,12 @@ type RepParamRdd struct {
 func PackRdd(data string) []byte {
 	dataLenStr := strconv.Itoa(len(data))
 	header := MsgHeaderRdd + ("00000000" + dataLenStr)[len(dataLenStr):]
-	crcData := crc(data)
+	crcData := fmp.Crc(data)
 	return []byte(header + data + crcData + MsgEofRdd)
 }
 
-// 解析tcp数据包
-func parseRdd(originMsg string) (*ParsedDataRdd, error) {
+// ParseRdd 解析tcp数据包
+func ParseRdd(originMsg string) (*ParsedDataRdd, error) {
 	parsedData := ParsedDataRdd{
 		OriginMsg: originMsg,
 	}
@@ -45,7 +47,7 @@ func parseRdd(originMsg string) (*ParsedDataRdd, error) {
 	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLenRdd]
 	msgCrc := dataAndCrc[len(data):]
 	// crc校验
-	realCrc := crc(data)
+	realCrc := fmp.Crc(data)
 	if msgCrc != realCrc {
 		return nil, errors.New("crc校验失败")
 	}

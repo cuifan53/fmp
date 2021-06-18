@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func crc(s string) string {
+func Crc(s string) string {
 	ret := 0xFFFF
 	num := 0xA001
 	inum := 0

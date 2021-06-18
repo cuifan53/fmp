@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/cuifan53/fmp/protocol"
+
 	"github.com/panjf2000/gnet"
 )
 
@@ -43,8 +45,6 @@ func (s *Server) Serve() {
 	if err := gnet.Serve(
 		s,
 		s.port,
-		gnet.WithReusePort(true),
-		gnet.WithMulticore(true),
 		gnet.WithCodec(&delimiterCodec{delimiter: s.getDelimiter()}),
 	); err != nil {
 		panic(err)
@@ -85,9 +85,9 @@ func (s *Server) getDelimiter() []byte {
 	var delimiter []byte
 	switch s.protocol {
 	case ProtocolNS:
-		delimiter = []byte(MsgEofNS)
+		delimiter = []byte(protocol.MsgEofNS)
 	case ProtocolRdd:
-		delimiter = []byte(MsgEofRdd)
+		delimiter = []byte(protocol.MsgEofRdd)
 	default:
 		panic(errors.New("protocol incorrect"))
 	}
@@ -113,20 +113,20 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
 	var (
 		err           error
-		parsedDataNS  *ParsedDataNS
-		parsedDataRdd *ParsedDataRdd
+		parsedDataNS  *protocol.ParsedDataNS
+		parsedDataRdd *protocol.ParsedDataRdd
 		mn            string
 	)
 
 	switch s.protocol {
 	case ProtocolNS:
-		parsedDataNS, err = parseNS(string(frame))
+		parsedDataNS, err = protocol.ParseNS(string(frame))
 		if err != nil {
 			return
 		}
 		mn = parsedDataNS.Mn
 	case ProtocolRdd:
-		parsedDataRdd, err = parseRdd(string(frame))
+		parsedDataRdd, err = protocol.ParseRdd(string(frame))
 		if err != nil {
 			return
 		}

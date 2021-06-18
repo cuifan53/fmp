@@ -1,9 +1,11 @@
-package fmp
+package protocol
 
 import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/cuifan53/fmp"
 )
 
 const (
@@ -31,12 +33,12 @@ type ParsedDataNS struct {
 func PackNS(data string) []byte {
 	dataLenStr := strconv.Itoa(len(data))
 	header := MsgHeaderNS + ("0000" + dataLenStr)[len(dataLenStr):]
-	crcData := crc(data)
+	crcData := fmp.Crc(data)
 	return []byte(header + data + crcData + MsgEofNS)
 }
 
-// 解析tcp数据包
-func parseNS(originMsg string) (*ParsedDataNS, error) {
+// ParseNS 解析tcp数据包
+func ParseNS(originMsg string) (*ParsedDataNS, error) {
 	parsedData := ParsedDataNS{
 		OriginMsg: originMsg,
 	}
@@ -44,7 +46,7 @@ func parseNS(originMsg string) (*ParsedDataNS, error) {
 	data := dataAndCrc[:len(dataAndCrc)-MsgCrcLenNS]
 	msgCrc := dataAndCrc[len(data):]
 	// crc校验
-	realCrc := crc(data)
+	realCrc := fmp.Crc(data)
 	if msgCrc != realCrc {
 		return nil, errors.New("crc校验失败")
 	}
@@ -58,10 +60,6 @@ func parseNS(originMsg string) (*ParsedDataNS, error) {
 	parseCpNS(&parsedData, cp)
 	// 解析Flag
 	parseFlagNS(&parsedData)
-	// 数据校验
-	if err := validateNS(&parsedData); err != nil {
-		return nil, err
-	}
 	return &parsedData, nil
 }
 
@@ -144,18 +142,4 @@ func parseFlagNS(parsedData *ParsedDataNS) {
 	} else {
 		parsedData.NeedReply = false
 	}
-}
-
-// 校验数据
-func validateNS(parsedData *ParsedDataNS) error {
-	if parsedData.St == "" {
-		return errors.New("ST字段不存在")
-	}
-	if parsedData.Cn == "" {
-		return errors.New("CN字段不存在")
-	}
-	if parsedData.Mn == "" {
-		return errors.New("MN字段不存在")
-	}
-	return nil
 }
