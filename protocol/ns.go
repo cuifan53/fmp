@@ -6,17 +6,8 @@ import (
 	"strings"
 )
 
-// NewProtocolNs 创建Ns协议
-func NewProtocolNs() *Ns {
-	return &Ns{
-		header:     "##",
-		dataLenLen: 4,
-		crcLen:     4,
-		eof:        "\n",
-	}
-}
-
 type Ns struct {
+	name       string
 	header     string
 	dataLenLen int
 	crcLen     int
@@ -24,7 +15,7 @@ type Ns struct {
 }
 
 // Parse 解析tcp数据包
-func (p *Ns) Parse(originMsg string) (*ParsedDataNs, error) {
+func (p *Ns) Parse(originMsg string) (interface{}, error) {
 	parsedData := ParsedDataNs{
 		OriginMsg: originMsg,
 	}
@@ -139,4 +130,8 @@ func (p *Ns) Pack(data string) []byte {
 
 func (p *Ns) Eof() []byte {
 	return []byte(p.eof)
+}
+
+func (p *Ns) Name() string {
+	return p.name
 }

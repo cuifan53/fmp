@@ -9,57 +9,35 @@ import (
 	"github.com/panjf2000/gnet"
 )
 
-type ProtocolName string
-
-const (
-	ProtocolNs  ProtocolName = "Ns"
-	ProtocolRdd ProtocolName = "Rdd"
-)
-
-func NewServer(port string, protocolName ProtocolName, handler IEventHandler) *Server {
-	if handler == nil {
-		panic("handler incorrect")
+func NewServer(port string, protocol protocol.IProtocol, handler IEventHandler) (*Server, error) {
+	if protocol == nil {
+		return nil, errors.New("protocol incorrect")
 	}
-	s := &Server{
+	if handler == nil {
+		return nil, errors.New("handler incorrect")
+	}
+	return &Server{
 		connMap:  make(map[string]gnet.Conn),
 		port:     port,
-		protocol: protocolName,
+		protocol: protocol,
 		handler:  handler,
-	}
-	switch protocolName {
-	case ProtocolNs:
-		s.protocolNs = protocol.NewProtocolNs()
-	case ProtocolRdd:
-		s.protocolRdd = protocol.NewProtocolRdd()
-	default:
-		panic("protocol incorrect")
-	}
-	return s
+	}, nil
 }
 
 type Server struct {
 	*gnet.EventServer
-	mu          sync.RWMutex
-	connMap     map[string]gnet.Conn
-	port        string
-	protocol    ProtocolName
-	protocolNs  *protocol.Ns
-	protocolRdd *protocol.Rdd
-	handler     IEventHandler
+	mu       sync.RWMutex
+	connMap  map[string]gnet.Conn
+	port     string
+	protocol protocol.IProtocol
+	handler  IEventHandler
 }
 
 func (s *Server) Serve() {
-	var delimiter []byte
-	switch s.protocol {
-	case ProtocolNs:
-		delimiter = s.protocolNs.Eof()
-	case ProtocolRdd:
-		delimiter = s.protocolRdd.Eof()
-	}
 	if err := gnet.Serve(
 		s,
 		s.port,
-		gnet.WithCodec(&delimiterCodec{delimiter: delimiter}),
+		gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
 		gnet.WithReusePort(true),
 	); err != nil {
 		panic(err)
@@ -72,14 +50,7 @@ func (s *Server) Send(mn, data string) error {
 	if conn == nil {
 		return errors.New("mn: " + mn + ", connection incorrect")
 	}
-	var packed []byte
-	switch s.protocol {
-	case ProtocolNs:
-		packed = s.protocolNs.Pack(data)
-	case ProtocolRdd:
-		packed = s.protocolRdd.Pack(data)
-	}
-	return conn.AsyncWrite(packed)
+	return conn.AsyncWrite(s.protocol.Pack(data))
 }
 
 // GetMns 获取所有MN
@@ -133,34 +104,39 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 }
 
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	var (
-		err           error
-		parsedDataNs  *protocol.ParsedDataNs
-		parsedDataRdd *protocol.ParsedDataRdd
-		mn            string
-	)
-	switch s.protocol {
-	case ProtocolNs:
-		parsedDataNs, err = s.protocolNs.Parse(string(frame))
-		if err != nil {
-			return
-		}
-		mn = parsedDataNs.Mn
-	case ProtocolRdd:
-		parsedDataRdd, err = s.protocolRdd.Parse(string(frame))
-		if err != nil {
-			return
-		}
-		mn = parsedDataRdd.Mn
+	parsedData, err := s.protocol.Parse(string(frame))
+	if err != nil {
+		return
 	}
+
+	mn := ""
+	msg := &Msg{
+		data: frame,
+	}
+
+	switch s.protocol.Name() {
+	case protocol.ProtocolNameNs:
+		parsedDataNs, ok := parsedData.(*protocol.ParsedDataNs)
+		if !ok {
+			return
+		}
+		msg.parsedDataNs = parsedDataNs
+		mn = parsedDataNs.Mn
+	case protocol.ProtocolNameRdd:
+		parsedDataRdd, ok := parsedData.(*protocol.ParsedDataRdd)
+		if !ok {
+			return
+		}
+		msg.parsedDataRdd = parsedDataRdd
+		mn = parsedDataRdd.Mn
+	default:
+		return
+	}
+
 	if mn == "" {
 		return
 	}
-	msg := &Msg{
-		data:          frame,
-		parsedDataNs:  parsedDataNs,
-		parsedDataRdd: parsedDataRdd,
-	}
+
 	if s.GetConn(mn) != c {
 		s.setConn(mn, c)
 		s.handler.OnMn(mn, true)

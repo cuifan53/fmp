@@ -5,6 +5,45 @@ import (
 	"strings"
 )
 
+type IProtocol interface {
+	Parse(originMsg string) (interface{}, error)
+	Pack(data string) []byte
+	Eof() []byte
+	Name() string
+}
+
+// ProtocolName 协议名称
+type ProtocolName string
+
+const (
+	ProtocolNameNs  = "Ns"  // 国标协议(2017 & 2005)
+	ProtocolNameRdd = "Rdd" // 远程设备调试协议
+)
+
+// NewProtocol 创建协议
+func NewProtocol(protocolName ProtocolName) IProtocol {
+	switch protocolName {
+	case ProtocolNameNs:
+		return &Ns{
+			name:       ProtocolNameNs,
+			header:     "##",
+			dataLenLen: 4,
+			crcLen:     4,
+			eof:        "\r\n",
+		}
+	case ProtocolNameRdd:
+		return &Rdd{
+			name:       ProtocolNameRdd,
+			header:     "##**",
+			dataLenLen: 8,
+			crcLen:     4,
+			eof:        "**\r\n",
+		}
+	default:
+		return nil
+	}
+}
+
 // ParsedDataNs Ns协议解析数据
 type ParsedDataNs struct {
 	OriginMsg string            `json:"originMsg"` // 原始报文 不包含EOF结尾
