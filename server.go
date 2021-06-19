@@ -9,19 +9,13 @@ import (
 	"github.com/panjf2000/gnet"
 )
 
-func NewServer(port string, protocol protocol.IProtocol, handler IEventHandler) (*Server, error) {
-	if protocol == nil {
-		return nil, errors.New("protocol incorrect")
-	}
-	if handler == nil {
-		return nil, errors.New("handler incorrect")
-	}
+func NewServer(port string, protocolName protocol.ProtocolName, handler IEventHandler) *Server {
 	return &Server{
 		connMap:  make(map[string]gnet.Conn),
 		port:     port,
-		protocol: protocol,
+		protocol: protocol.NewProtocol(protocolName),
 		handler:  handler,
-	}, nil
+	}
 }
 
 type Server struct {
@@ -85,7 +79,7 @@ func (s *Server) removeConn(mn string) {
 	delete(s.connMap, mn)
 }
 
-// ** 以下为重写server内部gnet.EventServer方法 ** //
+// ** 以下为重写gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
 	s.handler.OnOpened(c)
