@@ -9,14 +9,7 @@ import (
 	"github.com/panjf2000/gnet"
 )
 
-type EventHandler interface {
-	OnOpened(c gnet.Conn)
-	OnClosed(c gnet.Conn)
-	OnMn(mn string, connect bool)
-	React(c gnet.Conn, msg *Msg)
-}
-
-func NewServer(port string, protocol protocol.IProtocol, handler EventHandler) *Server {
+func NewServer(port string, protocol protocol.IProtocol, handler IEventHandler) *Server {
 	if protocol == nil {
 		panic("protocol incorrect")
 	}
@@ -37,7 +30,7 @@ type Server struct {
 	connMap  map[string]gnet.Conn
 	port     string
 	protocol protocol.IProtocol
-	handler  EventHandler
+	handler  IEventHandler
 }
 
 func (s *Server) Serve() {
@@ -45,6 +38,7 @@ func (s *Server) Serve() {
 		s,
 		s.port,
 		gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
+		gnet.WithReusePort(true),
 	); err != nil {
 		panic(err)
 	}
