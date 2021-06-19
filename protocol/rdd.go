@@ -7,8 +7,17 @@ import (
 	"strings"
 )
 
+// NewProtocolRdd 创建Rdd协议
+func NewProtocolRdd() *Rdd {
+	return &Rdd{
+		header:     "##**",
+		dataLenLen: 8,
+		crcLen:     4,
+		eof:        "**\n",
+	}
+}
+
 type Rdd struct {
-	name       ProtocolName
 	header     string
 	dataLenLen int
 	crcLen     int
@@ -16,7 +25,7 @@ type Rdd struct {
 }
 
 // Parse 解析tcp数据包
-func (p *Rdd) Parse(originMsg string) (interface{}, error) {
+func (p *Rdd) Parse(originMsg string) (*ParsedDataRdd, error) {
 	parsedData := ParsedDataRdd{
 		OriginMsg: originMsg,
 	}
@@ -93,8 +102,4 @@ func (p *Rdd) Pack(data string) []byte {
 
 func (p *Rdd) Eof() []byte {
 	return []byte(p.eof)
-}
-
-func (p *Rdd) Name() ProtocolName {
-	return p.name
 }
