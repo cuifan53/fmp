@@ -79,6 +79,14 @@ func (s *Server) removeConn(mn string) {
 	delete(s.connMap, mn)
 }
 
+// Reset 重置服务器 断开所有链接
+func (s *Server) Reset() {
+	for _, conn := range s.connMap {
+		_ = conn.Close()
+	}
+	s.connMap = make(map[string]gnet.Conn)
+}
+
 // ** 以下为重写gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
