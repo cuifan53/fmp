@@ -6,7 +6,7 @@ import (
 )
 
 type IProtocol interface {
-	Parse(originMsg string) (interface{}, error)
+	Parse(frame []byte) (interface{}, error)
 	Pack(data string) []byte
 	Eof() []byte
 	Name() string
@@ -18,6 +18,7 @@ type ProtocolName string
 const (
 	ProtocolNameNs  = "Ns"  // 国标协议(2017 & 2005)
 	ProtocolNameRdd = "Rdd" // 远程设备调试协议
+	ProtocolNameTc  = "Tc"  // 天创伟业自定义协议
 )
 
 // NewProtocol 创建协议
@@ -38,6 +39,11 @@ func NewProtocol(protocolName ProtocolName) IProtocol {
 			dataLenLen: 8,
 			crcLen:     4,
 			eof:        "**\r\n",
+		}
+	case ProtocolNameTc:
+		return &Tc{
+			name: ProtocolNameTc,
+			eof:  "\r\n",
 		}
 	default:
 		return nil
@@ -74,6 +80,25 @@ type RepParamRdd struct {
 	RepCode      string `json:"repCode"` // 回包码
 	RepStat      string `json:"repStat"` // 回包状态 Success Fail
 	RepSendParam string `json:"repSendParam"`
+}
+
+// ParsedDataTc Tc协议解析数据
+type ParsedDataTc struct {
+	Header TcHeader `json:"header"`
+	Body   TcBody   `json:"body"`
+}
+type TcHeader struct {
+	Sequence      int    `json:"sequence"`       // 操作序列号
+	Timestamp     int    `json:"timestamp"`      // 时间戳
+	Token         string `json:"token"`          // 设备编号
+	Id            int    `json:"id"`             // 数据所属系统id
+	MessageType   string `json:"message.type"`   // 消息类型
+	MessageLength int    `json:"message.length"` // 消息长度
+}
+type TcBody struct {
+	Length  int                    `json:"length"`  // 当前内容长度
+	Flag    int                    `json:"flag"`    // 是否压缩 0未压缩 1已压缩
+	Content map[string]interface{} `json:"content"` // 内容
 }
 
 // crc计算

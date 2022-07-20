@@ -16,13 +16,13 @@ type Rdd struct {
 }
 
 // Parse 解析tcp数据包
-func (p *Rdd) Parse(originMsg string) (interface{}, error) {
+func (p *Rdd) Parse(frame []byte) (interface{}, error) {
 	defer func() {
 		if err := recover(); err != nil {
 			return
 		}
 	}()
-
+	originMsg := string(frame)
 	// 检测长度
 	if len(originMsg) < len(p.header)+p.dataLenLen+p.crcLen+len(p.eof) {
 		return nil, errors.New("报文长度不足")

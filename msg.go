@@ -11,6 +11,7 @@ type Msg struct {
 	data          []byte
 	parsedDataNs  *protocol.ParsedDataNs
 	parsedDataRdd *protocol.ParsedDataRdd
+	parsedDataTc  *protocol.ParsedDataTc
 }
 
 func (m *Msg) GetData() []byte {
@@ -29,4 +30,10 @@ func (m *Msg) GetParsedDataRdd() *protocol.ParsedDataRdd {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.parsedDataRdd
+}
+
+func (m *Msg) GetParsedDataTc() *protocol.ParsedDataTc {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.parsedDataTc
 }

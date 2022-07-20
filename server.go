@@ -3,39 +3,60 @@ package fmp
 import (
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/cuifan53/fmp/protocol"
-
 	"github.com/panjf2000/gnet"
 )
 
-func NewServer(port string, protocolName protocol.ProtocolName, handler IEventHandler) *Server {
+func NewServer(port string, timeout time.Duration, protocolName protocol.ProtocolName, handler IEventHandler) *Server {
 	return &Server{
-		connMap:  make(map[string]gnet.Conn),
-		port:     port,
-		protocol: protocol.NewProtocol(protocolName),
-		handler:  handler,
+		connMap:       make(map[string]gnet.Conn),
+		connLatestMap: make(map[gnet.Conn]time.Time),
+		timeout:       timeout,
+		port:          port,
+		protocol:      protocol.NewProtocol(protocolName),
+		handler:       handler,
 	}
 }
 
 type Server struct {
 	*gnet.EventServer
-	mu       sync.RWMutex
-	connMap  map[string]gnet.Conn
-	port     string
-	protocol protocol.IProtocol
-	handler  IEventHandler
+	mu            sync.RWMutex
+	connMap       map[string]gnet.Conn
+	connLatestMap map[gnet.Conn]time.Time
+	timeout       time.Duration
+	port          string
+	protocol      protocol.IProtocol
+	handler       IEventHandler
 }
 
 func (s *Server) Serve() {
-	if err := gnet.Serve(
-		s,
-		s.port,
-		gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
-		gnet.WithReusePort(true),
-	); err != nil {
-		panic(err)
-	}
+	go func() {
+		if err := gnet.Serve(
+			s,
+			s.port,
+			gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
+			gnet.WithReusePort(true),
+		); err != nil {
+			panic(err)
+		}
+	}()
+	go func() {
+		for {
+			needDeletes := make([]gnet.Conn, 0)
+			for c, v := range s.connLatestMap {
+				if time.Now().After(v.Add(s.timeout)) {
+					_ = c.Close()
+					needDeletes = append(needDeletes, c)
+				}
+			}
+			for _, c := range needDeletes {
+				delete(s.connLatestMap, c)
+			}
+			time.Sleep(time.Second)
+		}
+	}()
 }
 
 // Send 发送报文
@@ -90,6 +111,7 @@ func (s *Server) Reset() {
 // ** 以下为重写gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
+	s.connLatestMap[c] = time.Now()
 	s.handler.OnOpened(c)
 	return
 }
@@ -106,7 +128,8 @@ func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
 }
 
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	parsedData, err := s.protocol.Parse(string(frame))
+	s.connLatestMap[c] = time.Now()
+	parsedData, err := s.protocol.Parse(frame)
 	if err != nil {
 		return
 	}
@@ -131,6 +154,13 @@ func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Actio
 		}
 		msg.parsedDataRdd = parsedDataRdd
 		mn = parsedDataRdd.Mn
+	case protocol.ProtocolNameTc:
+		parsedDataTc, ok := parsedData.(*protocol.ParsedDataTc)
+		if !ok {
+			return
+		}
+		msg.parsedDataTc = parsedDataTc
+		mn = parsedDataTc.Header.Token
 	default:
 		return
 	}
