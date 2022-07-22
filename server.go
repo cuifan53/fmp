@@ -33,16 +33,6 @@ type Server struct {
 
 func (s *Server) Serve() {
 	go func() {
-		if err := gnet.Serve(
-			s,
-			s.port,
-			gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
-			gnet.WithReusePort(true),
-		); err != nil {
-			panic(err)
-		}
-	}()
-	go func() {
 		for {
 			needDeletes := make([]gnet.Conn, 0)
 			for c, v := range s.connLatestMap {
@@ -57,6 +47,14 @@ func (s *Server) Serve() {
 			time.Sleep(time.Second)
 		}
 	}()
+	if err := gnet.Serve(
+		s,
+		s.port,
+		gnet.WithCodec(&delimiterCodec{delimiter: s.protocol.Eof()}),
+		gnet.WithReusePort(true),
+	); err != nil {
+		panic(err)
+	}
 }
 
 // Send 发送报文
