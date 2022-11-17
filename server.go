@@ -11,20 +11,17 @@ import (
 
 func NewServer(port string, timeout time.Duration, protocolName protocol.ProtocolName, handler IEventHandler) *Server {
 	return &Server{
-		connMap:       make(map[string]gnet.Conn),
-		connLatestMap: make(map[gnet.Conn]time.Time),
-		timeout:       timeout,
-		port:          port,
-		protocol:      protocol.NewProtocol(protocolName),
-		handler:       handler,
+		timeout:  timeout,
+		port:     port,
+		protocol: protocol.NewProtocol(protocolName),
+		handler:  handler,
 	}
 }
 
 type Server struct {
 	*gnet.EventServer
-	mu            sync.RWMutex
-	connMap       map[string]gnet.Conn
-	connLatestMap map[gnet.Conn]time.Time
+	connMap       sync.Map // map[string]gnet.Conn
+	connLatestMap sync.Map // map[gnet.Conn]time.Time
 	timeout       time.Duration
 	port          string
 	protocol      protocol.IProtocol
@@ -34,16 +31,13 @@ type Server struct {
 func (s *Server) Serve() {
 	go func() {
 		for {
-			needDeletes := make([]gnet.Conn, 0)
-			for c, v := range s.connLatestMap {
-				if time.Now().After(v.Add(s.timeout)) {
-					_ = c.Close()
-					needDeletes = append(needDeletes, c)
+			s.connLatestMap.Range(func(c, v interface{}) bool {
+				if time.Now().After(v.(time.Time).Add(s.timeout)) {
+					_ = c.(gnet.Conn).Close()
+					s.connLatestMap.Delete(c)
 				}
-			}
-			for _, c := range needDeletes {
-				delete(s.connLatestMap, c)
-			}
+				return true
+			})
 			time.Sleep(time.Second)
 		}
 	}()
@@ -68,65 +62,64 @@ func (s *Server) Send(mn, data string) error {
 
 // GetMns 获取所有MN
 func (s *Server) GetMns() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	mns := make([]string, 0)
-	for mn, _ := range s.connMap {
+	s.connMap.Range(func(mn, _ interface{}) bool {
 		if mn != "" {
-			mns = append(mns, mn)
+			mns = append(mns, mn.(string))
 		}
-	}
+		return true
+	})
 	return mns
 }
 
 // GetConn 通过MN获取Tcp连接
 func (s *Server) GetConn(mn string) gnet.Conn {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.connMap[mn]
+	conn, ok := s.connMap.Load(mn)
+	if !ok {
+		return nil
+	}
+	return conn.(gnet.Conn)
 }
 
 func (s *Server) setConn(mn string, conn gnet.Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.connMap[mn] = conn
+	s.connMap.Store(mn, conn)
 }
 
 func (s *Server) removeConn(mn string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.connMap, mn)
+	s.connMap.Delete(mn)
 }
 
 // Reset 重置服务器 断开所有链接
 func (s *Server) Reset() {
-	for _, conn := range s.connMap {
-		_ = conn.Close()
-	}
-	s.connMap = make(map[string]gnet.Conn)
+	s.connMap.Range(func(mn, conn interface{}) bool {
+		_ = conn.(gnet.Conn).Close()
+		s.connMap.Delete(mn)
+		return true
+	})
 }
 
 // ** 以下为重写gnet.EventServer方法 ** //
 
 func (s *Server) OnOpened(c gnet.Conn) (out []byte, action gnet.Action) {
-	s.connLatestMap[c] = time.Now()
+	s.connLatestMap.Store(c, time.Now())
 	s.handler.OnOpened(c)
 	return
 }
 
 func (s *Server) OnClosed(c gnet.Conn, err error) (action gnet.Action) {
-	for mn, conn := range s.connMap {
+	s.connMap.Range(func(mn, conn interface{}) bool {
 		if conn == c {
-			s.removeConn(mn)
-			s.handler.OnMn(mn, false)
+			s.connMap.Delete(mn)
+			s.handler.OnMn(mn.(string), false)
 		}
-	}
+		return true
+	})
 	s.handler.OnClosed(c)
 	return
 }
 
 func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	s.connLatestMap[c] = time.Now()
+	s.connLatestMap.Store(c, time.Now())
 	parsedData, err := s.protocol.Parse(frame)
 	if err != nil {
 		return
